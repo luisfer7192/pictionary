@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { socket } from './libs/socket'
 import SvgBoard from './components/SvgBoard'
 import type { Stroke, StrokeMsg } from './types/games'
+import { useSoundBank } from './hooks/useSoundBank'
 
 export default function App() {
   const [nickname, setNickname] = useState('')
@@ -15,6 +16,8 @@ export default function App() {
   const [color, setColor] = useState('#111')
   const [width, setWidth] = useState(3)
 
+  const { play, muted, toggleMute } = useSoundBank()
+
   const effectiveRoom = useMemo(
     () => (myRoom ?? joinedRoom ?? roomCode.trim().toUpperCase()),
     [myRoom, joinedRoom, roomCode]
@@ -25,12 +28,19 @@ export default function App() {
   useEffect(() => {
     const onRoomCreated = ({ roomCode }: { roomCode: string }) => setMyRoom(roomCode)
     const onRoomPlayers = ({ players }: { players: string[] }) => setPlayers(players)
-    const onRoundStart = ({ word }: { word: string }) => setSecretWord(word)
+
+    const onRoundStart = ({ word }: { word: string }) => {
+      setSecretWord(word)
+      play('newRound')                      // 🔊 new round
+    }
+
     const onRoundCorrect = ({ nickname, word }: { nickname: string; word: string }) => {
       setGuesses(g => [...g, `✅ ${nickname} guessed "${word}"`])
-      setSecretWord(null) // drawer will receive next secret via 'round:start'
-      setStrokes([])      // clear board
+      setSecretWord(null)                   // drawer will receive next secret via 'round:start'
+      setStrokes([])                        // clear board
+      play('correct')                       // 🔊 correct guess
     }
+
     const onGuess = ({ nickname, text }: { nickname: string; text: string }) =>
       setGuesses(g => [...g.slice(-30), `${nickname}: ${text}`])
 
@@ -48,6 +58,7 @@ export default function App() {
       setGuesses([])
       setStrokes([])
       setSecretWord(null)
+      play('newGame')                        // 🔊 reset/new game
     }
 
     const onRoomError = ({ message }: { message: string }) => {
@@ -75,7 +86,7 @@ export default function App() {
       socket.off('game:reset', onGameReset)
       socket.off('room:error', onRoomError)
     }
-  }, [])
+  }, [play]) // include play so sounds stay fresh
 
   // actions
   const createRoom = () => socket.emit('room:create', { nickname: nickname || 'Drawer' })
@@ -121,6 +132,11 @@ export default function App() {
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: 16 }}>
       <h2>Pictionary (Vite + Express + Socket.IO)</h2>
+
+      {/* sound toggle */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button onClick={toggleMute}>{muted ? '🔇 Enable sound' : '🔊 Mute'}</button>
+      </div>
 
       <div style={{ display: 'grid', gap: 10 }}>
         <input placeholder="Nickname" value={nickname} onChange={e => setNickname(e.target.value)} />
