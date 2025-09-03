@@ -1,34 +1,40 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { socket } from './libs/socket'
 import SvgBoard from './components/SvgBoard'
-import type { Stroke, StrokeMsg } from './types/games';
+import type { Stroke, StrokeMsg } from './types/games'
 
 export default function App() {
   const [nickname, setNickname] = useState('')
   const [roomCode, setRoomCode] = useState('')
-  const [myRoom, setMyRoom] = useState<string | null>(null)
-  const [secretWord, setSecretWord] = useState<string | null>(null) // only drawer receives this
+  const [myRoom, setMyRoom] = useState<string | null>(null)         // you created (drawer)
+  const [joinedRoom, setJoinedRoom] = useState<string | null>(null) // you joined (guesser)
+  const [secretWord, setSecretWord] = useState<string | null>(null) // drawer only
   const [players, setPlayers] = useState<string[]>([])
   const [guesses, setGuesses] = useState<string[]>([])
   const [strokes, setStrokes] = useState<Stroke[]>([])
   const [color, setColor] = useState('#111')
   const [width, setWidth] = useState(3)
 
+  const effectiveRoom = useMemo(
+    () => (myRoom ?? joinedRoom ?? roomCode.trim().toUpperCase()),
+    [myRoom, joinedRoom, roomCode]
+  )
   const isDrawer = useMemo(() => !!secretWord && !!myRoom, [secretWord, myRoom])
-  const effectiveRoom = (myRoom || roomCode.trim().toUpperCase())
 
   // socket listeners
   useEffect(() => {
-    socket.on('room:created', ({ roomCode }) => setMyRoom(roomCode))
-    socket.on('room:players', ({ players }) => setPlayers(players))
-    socket.on('round:start', ({ word }) => setSecretWord(word))
-    socket.on('round:correct', ({ nickname, word }) => {
+    const onRoomCreated = ({ roomCode }: { roomCode: string }) => setMyRoom(roomCode)
+    const onRoomPlayers = ({ players }: { players: string[] }) => setPlayers(players)
+    const onRoundStart = ({ word }: { word: string }) => setSecretWord(word)
+    const onRoundCorrect = ({ nickname, word }: { nickname: string; word: string }) => {
       setGuesses(g => [...g, `✅ ${nickname} guessed "${word}"`])
-      setSecretWord(null) // will receive next secret for drawer
-      setStrokes([])      // clear board for next round
-    })
-    socket.on('guess:broadcast', ({ nickname, text }) => setGuesses(g => [...g.slice(-30), `${nickname}: ${text}`]))
-    socket.on('stroke:point', (m: StrokeMsg) => {
+      setSecretWord(null) // drawer will receive next secret via 'round:start'
+      setStrokes([])      // clear board
+    }
+    const onGuess = ({ nickname, text }: { nickname: string; text: string }) =>
+      setGuesses(g => [...g.slice(-30), `${nickname}: ${text}`])
+
+    const onStroke = (m: StrokeMsg) => {
       setStrokes(curr => {
         const i = curr.findIndex(s => s.id === m.id)
         if (i === -1) return [...curr, { id: m.id, color: m.color, width: m.width, points: [{ x: m.x, y: m.y, t: m.t }] }]
@@ -36,21 +42,71 @@ export default function App() {
         next[i] = { ...next[i], points: [...next[i].points, { x: m.x, y: m.y, t: m.t }] }
         return next
       })
-    })
+    }
+
+    const onGameReset = () => {
+      setGuesses([])
+      setStrokes([])
+      setSecretWord(null)
+    }
+
+    const onRoomError = ({ message }: { message: string }) => {
+      // revert optimistic join if server rejected
+      setJoinedRoom(null)
+      console.warn('room:error', message)
+    }
+
+    socket.on('room:created', onRoomCreated)
+    socket.on('room:players', onRoomPlayers)
+    socket.on('round:start', onRoundStart)
+    socket.on('round:correct', onRoundCorrect)
+    socket.on('guess:broadcast', onGuess)
+    socket.on('stroke:point', onStroke)
+    socket.on('game:reset', onGameReset)
+    socket.on('room:error', onRoomError)
+
     return () => {
-      socket.off()
+      socket.off('room:created', onRoomCreated)
+      socket.off('room:players', onRoomPlayers)
+      socket.off('round:start', onRoundStart)
+      socket.off('round:correct', onRoundCorrect)
+      socket.off('guess:broadcast', onGuess)
+      socket.off('stroke:point', onStroke)
+      socket.off('game:reset', onGameReset)
+      socket.off('room:error', onRoomError)
     }
   }, [])
 
   // actions
   const createRoom = () => socket.emit('room:create', { nickname: nickname || 'Drawer' })
-  const joinRoom = () => socket.emit('room:join', { roomCode: effectiveRoom, nickname: nickname || 'Player' })
+
+  const joinRoom = () => {
+    const code = roomCode.trim().toUpperCase()
+    if (!code) return
+    socket.emit('room:join', { roomCode: code, nickname: nickname || 'Player' })
+    setJoinedRoom(code) // optimistic; will revert on 'room:error'
+  }
+
+  const leaveRoom = () => {
+    if (joinedRoom) {
+      // optional: only if your server handles it
+      socket.emit('room:leave', { roomCode: joinedRoom, nickname })
+    }
+    setJoinedRoom(null)
+    setPlayers([])
+    setGuesses([])
+    setStrokes([])
+    setSecretWord(null)
+    setRoomCode('') // show join UI again
+  }
+
   const sendGuess = (text: string) => {
     if (!effectiveRoom || !text) return
     socket.emit('guess:new', { roomCode: effectiveRoom, text, nickname: nickname || 'Player' })
   }
+
   const sendPoint = (p: StrokeMsg) => {
-    // local immediate update (for the drawer)...
+    // local immediate update (for the drawer)
     setStrokes(curr => {
       const i = curr.findIndex(s => s.id === p.id)
       if (i === -1) return [...curr, { id: p.id, color: p.color, width: p.width, points: [{ x: p.x, y: p.y, t: p.t }] }]
@@ -58,7 +114,7 @@ export default function App() {
       next[i] = { ...next[i], points: [...next[i].points, { x: p.x, y: p.y, t: p.t }] }
       return next
     })
-    // ...then broadcast to others
+    // then broadcast to others
     socket.emit('stroke:point', { roomCode: effectiveRoom, ...p })
   }
 
@@ -69,21 +125,40 @@ export default function App() {
       <div style={{ display: 'grid', gap: 10 }}>
         <input placeholder="Nickname" value={nickname} onChange={e => setNickname(e.target.value)} />
 
-        {!myRoom && (
+        {/* Show create/join only if not drawer and not joined */}
+        {!myRoom && !joinedRoom && (
           <>
             <button onClick={createRoom}>Create Room (Drawer)</button>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input placeholder="Room code (e.g. ABCD)" value={roomCode} onChange={e => setRoomCode(e.target.value.toUpperCase())} />
+              <input
+                placeholder="Room code (e.g. ABCD)"
+                value={roomCode}
+                onChange={e => setRoomCode(e.target.value.toUpperCase())}
+              />
               <button onClick={joinRoom}>Join</button>
             </div>
           </>
         )}
 
-        {myRoom && (
+        {/* Room info card (for drawer or guesser) */}
+        {(myRoom || joinedRoom) && (
           <div style={{ padding: 8, border: '1px solid #eee', borderRadius: 8 }}>
-            <div><b>Room:</b> {myRoom}</div>
-            <div><b>Secret word (drawer only):</b> {secretWord ?? '...'}</div>
+            <div><b>Room:</b> {myRoom ?? joinedRoom}</div>
+            {isDrawer && <div><b>Secret word:</b> {secretWord ?? '...'}</div>}
+            {/* Exit only for guesser */}
+            {joinedRoom && (
+              <div style={{ marginTop: 8 }}>
+                <button onClick={leaveRoom}>Exit Room</button>
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Reset only for drawer */}
+        {myRoom && isDrawer && effectiveRoom && (
+          <button onClick={() => socket.emit('game:reset', { roomCode: effectiveRoom })}>
+            Reset Game
+          </button>
         )}
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -102,9 +177,11 @@ export default function App() {
         />
 
         <GuessBox onSend={sendGuess} disabled={!effectiveRoom || isDrawer} />
+
         <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 8, maxHeight: 160, overflow: 'auto' }}>
           {guesses.map((g, i) => <div key={i}>{g}</div>)}
         </div>
+
         <div style={{ fontSize: 12, color: '#666' }}>Players: {players.join(', ') || '—'}</div>
         <p style={{ fontSize: 12, color: '#666' }}>
           Open on your laptop (create) and phone (join). Drawer sees the secret and can draw.

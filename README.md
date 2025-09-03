@@ -1,6 +1,6 @@
 ## Pictionary
 
-Please read the README of server and web.
+Please read the README of server and web folders.
 
 > [!NOTE]
 > Web have this same information
@@ -12,15 +12,6 @@ Open the app on your laptop → click Create Room (you’re the drawer). A secre
 Open the app on your phone (same URL) → enter the room code to Join.
 
 Drawer draws; others type guesses. On a correct guess, the server announces it and starts the next word.
-
-## What’s inside
-
-Stack: Vite (React + TS + SWC) + socket.io-client
-
-Drawing: SVG paths (simple, responsive, undo-friendly)
-
-State: All game state lives in memory on the server (no DB/auth)
-
 
 ## Troubleshooting
 

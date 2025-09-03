@@ -70,6 +70,18 @@ io.on('connection', (socket) => {
       }
     }
   })
+
+  socket.on('game:reset', ({ roomCode }) => {
+    const room = rooms[roomCode]
+    if (!room) return
+    // clear state & start a new word
+    io.to(roomCode).emit('game:reset')                   // tell everyone to clear UI
+    room.word = pick(WORDS)                              // pick next word
+    io.to(room.drawerId).emit('round:start', {           // secret to drawer
+      roomCode,
+      word: room.word
+    })
+  })
 })
 
 const port = Number(process.env.PORT || 3001)
