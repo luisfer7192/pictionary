@@ -1,69 +1,42 @@
-# React + TypeScript + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+# Pictionary – Web (Vite)
 
-Currently, two official plugins are available:
+Tiny React (Vite + TypeScript) client for a Pictionary demo.
+Uses SVG for drawing (crisp, responsive) and talks to the Socket.IO server via VITE_SERVER_URL.
+Intentionally minimal so the reviewer can run it quickly.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Quick start
+``` bash
+cd web
+cp .env.example .env
+npm install
+npm run dev                   # http://localhost:5173 as default
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+> If testing with a phone on the same Wi-Fi, set VITE_SERVER_URL in .env to your machine’s LAN IP, e.g. http://192.168.1.20:3001.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## How to play (1 minute)
+
+Open the app on your laptop → click Create Room (you’re the drawer). A secret word appears (drawer only).
+
+Open the app on your phone (same URL) → enter the room code to Join.
+
+Drawer draws; others type guesses. On a correct guess, the server announces it and starts the next word.
+
+## What’s inside
+
+Stack: Vite (React + TS + SWC) + socket.io-client
+
+Drawing: SVG paths (simple, responsive, undo-friendly)
+
+State: All game state lives in memory on the server (no DB/auth)
+
+
+## Troubleshooting
+
+CORS / connection errors: Ensure the server allows your web origin (default http://localhost:5173) and that VITE_SERVER_URL points to the server.
+
+Phone can’t connect: Use your LAN IP in VITE_SERVER_URL and keep both devices on the same network.
+
+Socket.IO mismatch: Both client and server use Socket.IO v4.
